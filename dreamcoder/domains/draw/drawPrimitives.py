@@ -54,7 +54,7 @@ def _blankAxes():
 		ax.set_ylim(-XYLIM, XYLIM)
 	return ax
 
-def _line(dummy):
+def _line(dummy=0):
 	x, y, l = (0, 0, 1)
 	l = patches.FancyArrow(x, y, l, 0, length_includes_head=True,
 		head_width=0, head_length=0, fc='k', ec='k')
@@ -73,16 +73,48 @@ def _line(dummy):
 # 	head_width=0, head_length=0, fc='k', ec='k')
 
 
-def _circle(dummy):
-	x, y, r = (0, 0, 1)
-	c = patches.Circle((x, y), radius=r, color='white', ec='black')
-	return c
+def _circle(dummy=0):
+	def C():
+		x, y, r = (0, 0, 1)
+		c = patches.Circle((x, y), radius=r, color='white', ec='black')
+		return c
+	return _transform(C(), s=0.5)
 
 # x, y, r = (0, 0, 1)
 # _circle = patches.Circle((x, y), radius=r, color='white', ec='black')
 
+def _arc(dummy=0):
+	# TODO: ie., a part of a circle
+	pass
 
-def _transform(p, s=1, theta=0, x=0, y=0, order="rst"):
+
+def _ellipse():
+    "or this could be derived from four arcs?"
+    pass
+
+def _square():
+    " or this could be derived from four lines"
+    pass
+
+
+def _connect(p1, p2):
+	"takes in two primitives and outputs a primitive that is a list of the first two. recursive."
+	p = []
+	
+	if isinstance(p1, list):
+		p.extend(p1)
+	else:
+		p.append(p1)
+
+	if isinstance(p2, list):
+		p.extend(p2)
+	else:
+		p.append(p2)
+
+	return p
+
+
+def _tform(p, s, theta, x, y, order):
 	# order is one of the 6 ways you can permutate the three transformation primitives. 
 	# write as a string (e.g. "trs" means scale, then rotate, then tranlate.)
 	# input and output types guarantees a primitive will only be transformed once.
@@ -126,6 +158,13 @@ def _transform(p, s=1, theta=0, x=0, y=0, order="rst"):
 	elif order == "str":
 		return _scale(_translate(_rotate(p, theta), x, y), s)
 
+def _transform(p, s=1, theta=0, x=0, y=0, order="trs"):
+    if isinstance(p, list):
+        pout = [_tform(pp, s, theta, x, y, order) for pp in p]
+    else:
+        pout = _tform(p, s, theta, x, y, order)
+    return pout
+
 
 def _reflect_y(p):
 	# reflects across y axis. call reflect() instead.
@@ -138,14 +177,19 @@ def _reflect_y(p):
 def _reflect(p, theta=math.pi/2):
 	# first rotate p by -theta, then reflect across y axis, then unrotate (by +theta)
 	# y axis would be theta = pi/2
-	theta = theta - math.pi/2
-	p = _transform(p, theta=-theta)
+	th = theta - math.pi/2
+	
+	def _A(p, th):
+		p = _transform(p, theta=-th)
+		p = _reflect_y(p)
+		p = _transform(p, theta=th)
+		return p
 
-	# p = _rotate(p, -theta)
-	p = _reflect_y(p)
-	p = _transform(p, theta=theta)
-	# p = _rotate(p, theta)
-	return p
+	if isinstance(p, list):
+		pout = [_A(pp, th) for pp in p]
+	else:
+		pout = _A(p, th)
+	return pout
 
 def _draw(ax, P):
 
@@ -157,39 +201,67 @@ def _draw(ax, P):
 		coll.set_facecolor([0,0,0,0])
 		#     coll.set_alpha(0.5)
 		return coll
-	P = c([P])
-	ax.add_collection(P)
+
+	def _D(ax, P):
+		P = c([P]) # first convert to patch collection.
+		ax.add_collection(P) # second, add to axis.
+		return ax
+
+	if isinstance(P, list):
+		for pp in P:
+			ax = _D(ax, pp)
+	else:
+		ax = _D(ax, P)
 	return ax
 
 
-if True:
-	def _Tfun(s=1, theta=0, x=0, y=0, order="trs"):
-		t = lambda p: _transform(p, s, theta, x, y, order)
-		return t
+# --- function versions of line, circle, and Transform, required as a type, for _transform.
+def _Tfun(s=1, theta=0, x=0, y=0, order="trs"):
+	t = lambda p: _transform(p, s, theta, x, y, order)
+	return t
 
-	def _circlefun(dummy):
-		c = lambda dummy: _circle(dummy)
-		return c
+def _circlefun(dummy=0):
+	c = lambda : _circle(dummy)
+	return c
 
-	def _linefun(dummy):
-		l = lambda dummy: _line(dummy)
-		return l
+def _linefun(dummy=0):
+	l = lambda : _line(dummy)
+	return l
 
-	def _rep(ax, P, N, T, dummy):
-	# UPDATED VERSION OF REPEAT (here takes in a T and outputs a list (without connect)
-	# outputs list of primitives, each transformed 1, 2, ..., N times
-	# p = lambda: line()
-	# T = lambda p: transform(p, theta=pi/2)
-		for i in range(N):
-		#         Pthis = copy.deepcopy(P)
-		#         Pthis = matplotlib.artist.Artist()
-		#         Pthis.update_from(P)
-		#         Pthis = P
-			Pthis = P(dummy)
-			for _ in range(i):
-				Pthis = T(Pthis)
-			_draw(ax, Pthis)
-		return ax
+def _repeat(ax, P, N, T):
+# UPDATED VERSION OF REPEAT (here takes in a T and outputs a list (without connect)
+# outputs list of primitives, each transformed 1, 2, ..., N times
+# p = lambda: line()
+# T = lambda p: transform(p, theta=pi/2)
+	for i in range(N):
+	#         Pthis = copy.deepcopy(P)
+	#         Pthis = matplotlib.artist.Artist()
+	#         Pthis.update_from(P)
+	#         Pthis = P
+		Pthis = P()
+		for _ in range(i):
+			Pthis = T(Pthis)
+		_draw(ax, Pthis)
+	return ax
+
+
+# ----- for generating figures
+def _save(ax, fname):
+	plt.savefig(fname, "png")
+
+def _drawNsave(prog, libname, stimname):
+    dirname_svg = "{}/svg/{}".format(SAVEDIR, libname)
+    dirname_png = "{}/png/{}".format(SAVEDIR, libname)    
+    
+    if not os.path.exists(dirname_svg):
+        os.makedirs(dirname_svg)    # prog is artist or collection of artists, or list of those
+    if not os.path.exists(dirname_png):
+        os.makedirs(dirname_png)    # prog is artist or collection of artists, or list of those
+        
+    ax = _draw(blankAxes(), prog)
+    ax.get_figure().savefig("{}/{}.svg".format(dirname_svg, stimname))
+    ax.get_figure().savefig("{}/{}.png".format(dirname_png, stimname))
+#     ax.get_figure().close()
 
 # blankaxes = Primitive("blankaxes", taxes, Curried(_blankAxes))
 # line = Primitive("line", tartist, Curried(_line))
@@ -232,7 +304,7 @@ if True:
 		Primitive("circlefun", arrow(tdummy, tartistfun), Curried(_circlefun)),
 		Primitive("linefun", arrow(tdummy, tartistfun), Curried(_linefun)),
 		Primitive("Tfun", arrow(tscale, tangle, tdist, tdist, ttrorder, ttransform), Curried(_Tfun)),
-		Primitive("rep", arrow(taxes, tartistfun, trep, ttransform, tdummy, taxes), Curried(_rep))]
+		Primitive("rep", arrow(taxes, tartistfun, trep, ttransform, taxes), Curried(_repeat))]
 	p7 = [Primitive("rep{}".format(i), trep, j) for i, j in enumerate(range(8))]
 
 primitives = p1 + p2 + p3 + p4 + p5 + p6 + p7
